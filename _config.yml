@@ -6,11 +6,6 @@ maruku:
   use_divs:   false
   png_engine: blahtex
 
-coderay:
-  coderay_wrap: div
-  coderay_line_numbers: inline
-   coderay_line_numbers_start: 1
-   
 sass:
   sass_dir:          _sass
   style:            :compressed
