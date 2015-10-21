@@ -1,0 +1,280 @@
+<h3 id="flight-exercise">Flight exercise.</h3>
+
+<h5 id="install-the-stack">Install the stack.</h5>
+
+<p>This requires registration, and is free for non-commercial use. I downloaded the version that ran on OSX. During installation you are given the option to create a node for analytics, search or both. I chose both, as this was going to be a single node in a single cluster, and therefore wouldn’t use up too many resources.</p>
+
+<p>http://www.datastax.com/download</p>
+
+<h4 id="install-the-dev-center">Install the Dev Center.</h4>
+
+<p>This desktop application allowed me to create and execute CQL against the Cassandra instance. It also provided a rich UI showing the current key spaces within the node.</p>
+
+<p>https://academy.datastax.com/downloads/ops-center#devCenter</p>
+
+<p>This was very useful later when I needed to generate the “flights” table in the single node cluster.</p>
+
+<h4 id="upload-csv-into-cassandra">Upload CSV into Cassandra.</h4>
+
+<p>The first task is to upload the flight data into Cassandra. To do this I had two options.</p>
+
+<ul>
+  <li>Create an ETL application</li>
+  <li>Make use of existing tools provided within the Datastax enterprise stack.</li>
+</ul>
+
+<p>I chose to make use of the existing tool, Sqoop. I could then always return to this task and create an application if time permitted.</p>
+
+<h4 id="using-sqoop">Using Sqoop</h4>
+
+<p>Sqoop is pre-installed with Datastax Enterprise. There is also helpful documentation covering a demo that shows how to use Sqoop to import a CSV file into Cassandra, via a MySQL database.</p>
+
+<p>http://docs.datastax.com/en/datastax_enterprise/4.8//datastax_enterprise/ana/anaSqpDemo.html</p>
+
+<p>I already had an instance of MySQL up and running so the only task required was to download the MySQL Java JDBC driver required to allow it to interact with Sqoop. This driver is provided by Oracle, so yes - you’ll need to register.</p>
+
+<p>http://dev.mysql.com/downloads/connector/j/</p>
+
+<p>This will supply you with a JAR file named: mysql-connector-java-5.1.37-bin.jar</p>
+
+<p>Next step is to copy this into the lib folder of Sqoop, which on my machine was:</p>
+
+<p>/Users/paulhemmings/dse/resources/sqoop/lib</p>
+
+<h4 id="create-the-new-schemadatabase-in-mysql">Create the new schema/database in MySQL</h4>
+
+<p>Now all I needed was to initialize my MySQL instance to accept the CSV data. For this I would need to create:</p>
+
+<ul>
+  <li>A new schema</li>
+  <li>A new user with access to the table</li>
+</ul>
+
+<p>Here is some example SQL which performs these tasks</p>
+
+<p><code>
+mysql&gt; CREATE SCHEMA `flights` DEFAULT CHARACTER SET utf8 COLLATE utf8_bin ;
+mysql&gt; CREATE USER 'flights'@'localhost' IDENTIFIED BY 'flights';
+mysql&gt; GRANT ALL ON flights.* TO 'flights'@'localhost';
+mysql&gt; flush privileges;
+</code></p>
+
+<h4 id="create-the-flights-table-in-the-new-schema">Create the flights table in the new schema.</h4>
+
+<p>This table needs to match the CSV data. As we have been provided with the CQL to generate the Cassandra table, this can be re-used.</p>
+
+<p>note:: MySQL requires sized for the varchar. Set to 1024 for now. Can always convert to text if need be</p>
+
+<p><code>
+CREATE TABLE flights (
+ID int PRIMARY KEY,
+YEAR int,
+DAY_OF_MONTH int,
+FL_DATE timestamp,
+AIRLINE_ID int,
+CARRIER varchar(1024),
+FL_NUM int,
+ORIGIN_AIRPORT_ID int,
+ORIGIN varchar(1024),
+ORIGIN_CITY_NAME varchar(1024),
+ORIGIN_STATE_ABR varchar(1024),
+DEST varchar(1024),
+DEST_CITY_NAME varchar(1024),
+DEST_STATE_ABR varchar(1024),
+DEP_TIME int,
+ARR_TIME int,
+ACTUAL_ELAPSED_TIME int,
+AIR_TIME int,
+DISTANCE int)
+</code></p>
+
+<h4 id="create-the-flights-keyspace-and-flights-table-in-cassandra">Create the flights keyspace, and flights table in Cassandra</h4>
+
+<p>Here is the CQL I used to create a new keyspace called “flights”</p>
+
+<p><code>
+CREATE KEYSPACE flights
+WITH replication = {
+	'class' : 'SimpleStrategy',
+	'replication_factor' : 1
+};
+</code></p>
+
+<p>Here is the CQL to generate the Cassandra table. Notice that this schema sets the DEP_TIME to ARR_TIME columns to be of data type INT. The data types for these columns had to match those within MySQL table, otherwise the import would fail.</p>
+
+<p><code>
+CREATE TABLE flightsNoTimestamps (
+ID int PRIMARY KEY,
+YEAR int,
+DAY_OF_MONTH int,
+FL_DATE timestamp,
+AIRLINE_ID int,
+CARRIER varchar,
+FL_NUM int,
+ORIGIN_AIRPORT_ID int,
+ORIGIN varchar,
+ORIGIN_CITY_NAME varchar,
+ORIGIN_STATE_ABR varchar,
+DEST varchar,
+DEST_CITY_NAME varchar,
+DEST_STATE_ABR varchar,
+DEP_TIME int,
+ARR_TIME int,
+ACTUAL_ELAPSED_TIME int,
+AIR_TIME int,
+DISTANCE int);
+</code></p>
+
+<h4 id="import-the-csv-into-mysql">Import the CSV into MySQL</h4>
+
+<p>The SQL to load the CSV file into the new table was helpfully provided in the Sqoop demo documentation.</p>
+
+<p><code>
+LOAD DATA LOCAL INFILE '[path]/flights_from_pg.csv'
+         INTO TABLE flights.flights
+         FIELDS TERMINATED BY ','
+         ENCLOSED BY '"'
+         LINES TERMINATED BY '\n';
+</code></p>
+
+<p>Rather surprisingly, this worked first time. Almost. You’ll notice that the DEP_TIME to AIR_TIME columns in the “flights” table have been created as INT data types, instead of timestamp, as defined in the requirements. This was because several columns within the CSV failed to import into MySQL when the columns were of that type. I reviewed the data in the raw CSV file, and made the change to the column data types accordingly, to ensure all data would be loaded successfully.</p>
+
+<p>And here’s the output of the successful load</p>
+
+<p><code>
+1048576 row(s) affected Records:
+1048576  Deleted: 0
+Skipped: 0
+Warnings: 0	10.058 sec
+</code></p>
+
+<h4 id="configure-sqoop-to-load-the-data-from-mysql">Configure Sqoop to load the data from MySQL.</h4>
+
+<p>Now we need to configure Sqoop to load data from MySQL into Cassandra. For this we need to tell it the source schema and table, as well as the destination keyspace and table. The options also need to describe the mappings for each column.</p>
+
+<p>NOTE:: Cassandra columns are lower case.</p>
+
+<p>The configuration is held within an <em>import.options</em> file.</p>
+
+<p><code>
+cql-import
+--table
+flights
+--cassandra-keyspace
+flights
+--cassandra-table
+flightsNoTimestamps
+--cassandra-column-mapping
+id:ID,year:YEAR,day_of_month:DAY_OF_MONTH,fl_date:FL_DATE,airline_id:AIRLINE_ID,carrier:CARRIER,fl_num:FL_NUM,origin_airport_id:ORIGIN_AIRPORT_ID,origin:ORIGIN,origin_city_name:ORIGIN_CITY_NAME,origin_state_abr:ORIGIN_STATE_ABR,dest:DEST,dest_city_name:DEST_CITY_NAME,dest_state_abr:DEST_STATE_ABR,dep_time:DEP_TIME,arr_time:ARR_TIME,actual_elapsed_time:ACTUAL_ELAPSED_TIME,air_time:AIR_TIME,distance:DISTANCE
+--connect
+jdbc:mysql://127.0.0.1/flights
+--username
+flights
+--password
+flights
+--cassandra-host
+127.0.0.1
+</code></p>
+
+<h3 id="execute-sqoop">Execute Sqoop</h3>
+
+<p>Run the sqoop using the import.options just created.</p>
+
+<p><code>
+$ cd /Users/paulhemmings/dse/bin
+$ ./dse sqoop --options-file /Users/paulhemmings/dse/demos/sqoop/import.options
+</code></p>
+
+<h4 id="check-theres-data-in-that-table">Check there’s data in that table.</h4>
+
+<p>Sqoop completed without any notification to say if the import was successful. I made a quick check by running a CQL statement within DevCenter:</p>
+
+<p><code>SELECT COUNT(*) FROM flightsnotimestamps;</code></p>
+
+<p>It worked first time. Interestingly enough the DevCenter imposes a limit on how many items it can return. This includes the value of the count. So even though there were just over a million rows in the table, the count would not return a number greater than this limit. Later I find a way to get a true count.</p>
+
+<h4 id="analysis-time">Analysis time.</h4>
+
+<p>The exercise required some stats to be extracted from the flight data. As I’m far more proficient in SQL than I am CQL I thought I’d get these values from my MySQL instance first. I could then use these to double check any values I retrieved from CQL.</p>
+
+<p>Q How many records were loaded?</p>
+
+<p>A 1048576</p>
+
+<p><code>select count(*) from flights</code></p>
+
+<p>Q. List all flights leaving a particular airport, sorted by time.</p>
+
+<p>A.</p>
+
+<p><code>select * from flights where ORIGIN = 'GGG' order by fl_date, dep_time</code></p>
+
+<p>Q. How many flights originated from the ‘HNL’ airport code on 2012-01-25?</p>
+
+<p>A. 288</p>
+
+<p><code>select count(*) from flights where ORIGIN = "HNL" and fl_date = '2012-01-25'</code></p>
+
+<p>Q. How many airport codes start with the letter ‘A’?</p>
+
+<p>A. 22 (over complicated I’m sure but wanted to make sure there were no airports in ORIGIN that were not in DEST, or vice versa)</p>
+
+<p><code>
+select a.airport, b.airport
+from
+(
+ select distinct(ORIGIN) as airport
+ from flights
+ where ORIGIN like 'A%'
+) a
+left outer
+join
+(
+ select distinct(DEST) as airport
+ from flights
+ where DEST like 'A%'
+) b
+on a.airport = b.airport
+</code></p>
+
+<p>Q. What originating airport had the most flights on 2012-01-23?</p>
+
+<p>A. ATL, with 2155 flights</p>
+
+<p><code>
+select ORIGIN, count(*)
+from flights
+where FL_DATE = '2012-01-23'
+group
+by ORIGIN
+order
+by count(*) desc
+</code></p>
+
+<h4 id="analysis-using-cassandra">Analysis using Cassandra.</h4>
+
+<p>The exercise asks for the stats to be retrieved using either Analystics (DSE Spark, Hadoop), or Search (DSE SOLR, Native SOLR)</p>
+
+<h5 id="spark">Spark</h5>
+
+<p>Here’s a link to the official Datastax documentation for Spark.</p>
+
+<p>http://docs.datastax.com/en/datastax_enterprise/4.8//datastax_enterprise/spark/sparkSCcontext.html</p>
+
+<p>Here’s how to start Spark on your local machine.</p>
+
+<p><code>
+$ cd /Users/paulhemmings/dse/bin
+$ ./dse spark
+</code></p>
+
+<p>Here’s some example queries</p>
+
+<p><code>
+scala&gt; :showSchema flights flightsnotimestamps
+scala&gt; sc.cassandraTable("flights", "flights").select("id").where("ORIGIN = ?", "hnl")
+</code></p>
+
+<p>And here is how I fwas able to get an accurate count of the rows in my Cassandra table.</p>
+
+<p><code>scala&gt; csc.sql("SELECT origin from flights.flightsNoTimestamps").collect().length</code></p>
