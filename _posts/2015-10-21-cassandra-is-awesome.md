@@ -54,12 +54,12 @@ Now all I needed was to initialize my MySQL instance to accept the CSV data. For
 
 Here is some example SQL which performs these tasks
 
-````
+```
 mysql> CREATE SCHEMA `flights` DEFAULT CHARACTER SET utf8 COLLATE utf8_bin ;
 mysql> CREATE USER 'flights'@'localhost' IDENTIFIED BY 'flights';
 mysql> GRANT ALL ON flights.* TO 'flights'@'localhost';
 mysql> flush privileges;
-````
+```
 
 #### Create the flights table in the new schema.
 
@@ -67,7 +67,7 @@ This table needs to match the CSV data. As we have been provided with the CQL to
 
 note:: MySQL requires sized for the varchar. Set to 1024 for now. Can always convert to text if need be
 
-````
+```
 CREATE TABLE flights (
 ID int PRIMARY KEY,
 YEAR int,
@@ -88,23 +88,23 @@ ARR_TIME int,
 ACTUAL_ELAPSED_TIME int,
 AIR_TIME int,
 DISTANCE int)
-````
+```
 
 #### Create the flights keyspace, and flights table in Cassandra
 
 Here is the CQL I used to create a new keyspace called "flights"
 
-````
+```
 CREATE KEYSPACE flights
 WITH replication = {
 	'class' : 'SimpleStrategy',
 	'replication_factor' : 1
 };
-````
+```
 
 Here is the CQL to generate the Cassandra table. Notice that this schema sets the DEP_TIME to ARR_TIME columns to be of data type INT. The data types for these columns had to match those within MySQL table, otherwise the import would fail.
 
-````
+```
 CREATE TABLE flightsNoTimestamps (
 ID int PRIMARY KEY,
 YEAR int,
@@ -125,30 +125,30 @@ ARR_TIME int,
 ACTUAL_ELAPSED_TIME int,
 AIR_TIME int,
 DISTANCE int);
-````
+```
 
 #### Import the CSV into MySQL
 
 The SQL to load the CSV file into the new table was helpfully provided in the Sqoop demo documentation.
 
-````
+```
 LOAD DATA LOCAL INFILE '[path]/flights_from_pg.csv'
          INTO TABLE flights.flights
          FIELDS TERMINATED BY ','
          ENCLOSED BY '"'
          LINES TERMINATED BY '\n';
-````
+```
 
 Rather surprisingly, this worked first time. Almost. You'll notice that the DEP_TIME to AIR_TIME columns in the "flights" table have been created as INT data types, instead of timestamp, as defined in the requirements. This was because several columns within the CSV failed to import into MySQL when the columns were of that type. I reviewed the data in the raw CSV file, and made the change to the column data types accordingly, to ensure all data would be loaded successfully.
 
 And here's the output of the successful load
 
-````
+```
 1048576 row(s) affected Records:
 1048576  Deleted: 0
 Skipped: 0
 Warnings: 0	10.058 sec
-````
+```
 
 #### Configure Sqoop to load the data from MySQL.
 
@@ -158,7 +158,7 @@ NOTE:: Cassandra columns are lower case.
 
 The configuration is held within an *import.options* file.
 
-````
+```
 cql-import
 --table
 flights
@@ -176,22 +176,22 @@ flights
 flights
 --cassandra-host
 127.0.0.1
-````
+```
 
 ### Execute Sqoop
 
 Run the sqoop using the import.options just created.
 
-````
+```
 $ cd /Users/paulhemmings/dse/bin
 $ ./dse sqoop --options-file /Users/paulhemmings/dse/demos/sqoop/import.options
-````
+```
 
 #### Check there's data in that table.
 
 Sqoop completed without any notification to say if the import was successful. I made a quick check by running a CQL statement within DevCenter:
 
-````SELECT COUNT(*) FROM flightsnotimestamps;````
+```SELECT COUNT(*) FROM flightsnotimestamps;```
 
 It worked first time. Interestingly enough the DevCenter imposes a limit on how many items it can return. This includes the value of the count. So even though there were just over a million rows in the table, the count would not return a number greater than this limit. Later I find a way to get a true count.
 
@@ -203,25 +203,25 @@ Q How many records were loaded?
 
 A 1048576
 
-````select count(*) from flights````
+```select count(*) from flights```
 
 Q. List all flights leaving a particular airport, sorted by time.
 
 A.
 
-````select * from flights where ORIGIN = 'GGG' order by fl_date, dep_time````
+```select * from flights where ORIGIN = 'GGG' order by fl_date, dep_time```
 
 Q. How many flights originated from the ‘HNL’ airport code on 2012-01-25?
 
 A. 288
 
-````select count(*) from flights where ORIGIN = "HNL" and fl_date = '2012-01-25'````
+```select count(*) from flights where ORIGIN = "HNL" and fl_date = '2012-01-25'```
 
 Q. How many airport codes start with the letter ‘A’?
 
 A. 22 (over complicated I'm sure but wanted to make sure there were no airports in ORIGIN that were not in DEST, or vice versa)
 
-````
+```
 select a.airport, b.airport
 from
 (
@@ -237,13 +237,13 @@ join
  where DEST like 'A%'
 ) b
 on a.airport = b.airport
-````
+```
 
 Q. What originating airport had the most flights on 2012-01-23?
 
 A. ATL, with 2155 flights
 
-````
+```
 select ORIGIN, count(*)
 from flights
 where FL_DATE = '2012-01-23'
@@ -251,7 +251,7 @@ group
 by ORIGIN
 order
 by count(*) desc
-````
+```
 
 #### Analysis using Cassandra.
 
@@ -265,18 +265,18 @@ http://docs.datastax.com/en/datastax_enterprise/4.8//datastax_enterprise/spark/s
 
 Here's how to start Spark on your local machine.
 
-````
+```
 $ cd /Users/paulhemmings/dse/bin
 $ ./dse spark
-````
+```
 
 Here's some example queries
 
-````
+```
 scala> :showSchema flights flightsnotimestamps
 scala> sc.cassandraTable("flights", "flights").select("id").where("ORIGIN = ?", "hnl")
-````
+```
 
 And here is how I fwas able to get an accurate count of the rows in my Cassandra table.
 
-````scala> csc.sql("SELECT origin from flights.flightsNoTimestamps").collect().length````
+```scala> csc.sql("SELECT origin from flights.flightsNoTimestamps").collect().length```
