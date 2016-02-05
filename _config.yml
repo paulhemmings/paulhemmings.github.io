@@ -1,5 +1,5 @@
 # We specify the directory for Jekyll so we can use @imports.
-markdown:    maruku
+markdown:    kramdown
 
 maruku:
   use_tex:    false

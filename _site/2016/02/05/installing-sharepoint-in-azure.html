@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+  <meta charset="UTF-8">
+  <link href="http://gmpg.org/xfn/11" rel="profile">
+
+  <!-- Enable responsiveness on mobile devices-->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>
+    
+      Installing Sharepoint in Azure &middot; 
+    
+  </title>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="/styles.css">
+
+  <!-- Icons -->
+  <link rel="apple-touch-icon-precomposed" sizes="144x144" href="/public/apple-touch-icon-precomposed.png">
+  <link rel="shortcut icon" href="/public/favicon.ico">
+
+  <!-- RSS -->
+  <link rel="alternate" type="application/atom+xml" title="" href="/atom.xml">
+</head>
+
+
+  <body>
+
+    <div class="container content">
+      <header class="masthead">
+        <h3 class="masthead-title">
+          <a href="/" title="Home"></a>
+          <small></small>
+        </h3>
+      </header>
+
+      <main>
+        <article class="post">
+  <h1 class="post-title">Installing Sharepoint in Azure</h1>
+  <h3 id="requirement">Requirement</h3>
+
+<p>I had some Sharepoint applications to write. I therefore needed a development instance to work against.</p>
+
+<h3 id="blocker">Blocker</h3>
+
+<p>My MSDN license gave me access to an evaluation version of Sharepoint 2013, but my development machine was a Macbook, and there wasn’t much chance of Sharepoint running on that. I did have <a href="http://www.parallels.com">parallels</a> installed, but that was running Windows 8.1 - and Sharepoint 2013 requires a Windows Server OS to run under. So I needed an instance of Windows 2012, and somewhere to run it.</p>
+
+<h3 id="solution">Solution</h3>
+
+<p>I originally intended to run the Windows 2012 instance under VirtualBox. This had two benefits - (1) VirtualBox is free, and (2) I could run it on my Macbook. But for reasons I was never able to resolve, Microsoft refused to let me download the evaluation Windows Server 2012 ISO. Luckily MSDN Enterprise comes with some free Azure time each month. And Azure comes with prebuilt images, which include Windows Server 2012.</p>
+
+<h3 id="steps">Steps</h3>
+
+<h4 id="activating-microsoft-azure">Activating Microsoft Azure</h4>
+
+<ol>
+  <li>Create a Microsoft login, and associate that account with your MSDN license</li>
+  <li>Go to http://msdn.microsoft.com/subscriptions</li>
+  <li>Select “My Account”</li>
+  <li>Select “Activate Microsoft Azure”. This will give you $150 per month of credits.</li>
+</ol>
+
+<h4 id="start-a-windows-server-2012-virtual-machine">Start a Windows Server 2012 Virtual Machine</h4>
+
+<p>Azure has two portals (see below for links). The documentation you will find online for creating a Sharepoint instance under Azure references the old management portal. But here are the instructions for the new portal.</p>
+
+<ol>
+  <li>Go to new <a href="https://portal.azure.com">Azure Portal</a> and login</li>
+  <li>Select “Virtual Machines”</li>
+  <li>Click “+ (Add)” in the top left hand corner.</li>
+  <li>Select “Windows Server” from the gallery.</li>
+  <li>You have a choice here, I chose “Windows Server 2012 R2 Datacenter”</li>
+  <li>Choose classic as the resource manager</li>
+  <li>Select “create”</li>
+  <li>Enter a username and password that will be the administration user on this machine</li>
+  <li>Wait. (You will do a lot of this)</li>
+</ol>
+
+<h4 id="install-sharepoint-2013">Install Sharepoint 2013</h4>
+
+<p>Hint: As it can take a while for the Windows server to provision I downloaded the evaluation image of Sharepoint 2013 locally. I think uploaded this onto my OneDrive so I could access it from the virtual machine. Also, so I would have access to it for future installations.</p>
+
+<ol>
+  <li>Download the “SharePointServer_x64_en-us.img” evaluation image from the link (see below)</li>
+  <li>Make a note of the key - you will need this later</li>
+  <li>Mount the image by double clicking on the file</li>
+  <li>Run the executable file “prerequisiteinstaller.exe” (right click to run as Administrator)</li>
+  <li>Once this has completed run the “Setup” file. This is where you’ll need the key</li>
+</ol>
+
+<h4 id="known-issues">Known issues</h4>
+
+<p>It is entirely possible you will get the following error when you run the “prerequisiteinstaller.exe” file.</p>
+
+<blockquote>
+  <p>The tool was unable to install Application Server Role, Web Server (IIS) Role.</p>
+</blockquote>
+
+<p>To resolve this, you will need to complete the following Steps</p>
+
+<ol>
+  <li>Open a Powershell terminal and run the shell scripts (see below)</li>
+  <li>Go to the following folder Windows System32 folder (C:\Windows\system32)</li>
+  <li>Check that there is an executable called “ServerManagerCmd.exe”</li>
+  <li>If there is not, copy the file ServerManager.exe to ServerManagerCmd.exe</li>
+  <li>Then rerun the “prerequisiteinstaller.exe” file</li>
+  <li>Once that is complete, you can then run the “Setup”.</li>
+</ol>
+
+<h5 id="powershell-script-see-above-known-issue">Powershell Script (see above known issue)</h5>
+<div class="highlighter-rouge"><pre class="highlight"><code>Import-Module ServerManager
+
+Add-WindowsFeature NET-WCF-HTTP-Activation45,NET-WCF-TCP-Activation45,NET-WCF-Pipe-Activation45
+
+Add-WindowsFeature Net-Framework-Features,Web-Server,Web-WebServer, `
+    Web-Common-Http,Web-Static-Content,Web-Default-Doc,Web-Dir-Browsing, `
+    Web-Http-Errors,Web-App-Dev,Web-Asp-Net,Web-Net-Ext,Web-ISAPI-Ext, `
+    Web-ISAPI-Filter,Web-Health,Web-Http-Logging,Web-Log-Libraries,Web-Request-Monitor, `
+    Web-Http-Tracing,Web-Security,Web-Basic-Auth,Web-Windows-Auth,Web-Filtering, `
+    Web-Digest-Auth,Web-Performance,Web-Stat-Compression,Web-Dyn-Compression, `
+    Web-Mgmt-Tools,Web-Mgmt-Console,Web-Mgmt-Compat,Web-Metabase,Application-Server, `
+    AS-Web-Support,AS-TCP-Port-Sharing,AS-WAS-Support, AS-HTTP-Activation, `
+    AS-TCP-Activation,AS-Named-Pipes,AS-Net-Framework,WAS,WAS-Process-Model, `
+    WAS-NET-Environment,WAS-Config-APIs,Web-Lgcy-Scripting,Windows-Identity-Foundation, `
+    Server-Media-Foundation,Xps-Viewer
+</code></pre>
+</div>
+
+<h3 id="useful-links">Useful links</h3>
+
+<dl>
+  <dt>MSDN (-&gt; Downloads -&gt; Trial Software)</dt>
+  <dd>https://msdn.microsoft.com</dd>
+  <dt>Evaluation version of Sharepoint 2013</dt>
+  <dd>https://msdn.microsoft.com/sharepoint2013resources</dd>
+  <dt>Evaluation version of Windows Server 2012</dt>
+  <dd>https://msdn.microsoft.com/windowsserver2012r2resources</dd>
+  <dt>Microsoft Azure management portal</dt>
+  <dd>https://manage.windowsazure.com/</dd>
+  <dt>New Portal</dt>
+  <dd>https://portal.azure.com/#</dd>
+</dl>
+
+</article>
+
+
+<aside class="related">
+  <h2>Related Posts</h2>
+  <ul class="related-posts">
+    
+      <li>
+        <h3>
+          <a href="/2015/10/21/cassandra-is-awesome.html">
+            Datastax Flight Exercise
+          </a>
+        </h3>
+      </li>
+    
+  </ul>
+</aside>
+
+
+      </main>
+
+      <footer class="footer">
+        <small>
+          &copy; <time datetime="2016-02-05T13:22:33-08:00">2016</time>. All rights reserved.
+        </small>
+      </footer>
+    </div>
+
+  </body>
+</html>
